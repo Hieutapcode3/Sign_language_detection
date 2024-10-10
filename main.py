@@ -3,24 +3,28 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import time
-import pyttsx3  # Thư viện chuyển văn bản thành giọng nói
+import pyttsx3  
 import threading
 
 # Khởi tạo pyttsx3
 engine = pyttsx3.init()
+engine.setProperty('rate', 150)
 
+is_muted = False
 with open('./model.p', 'rb') as f:
     model_dict = pickle.load(f)
 model = model_dict['model']
+
+volume_on_image = cv2.imread('speaker.jpg')  
+mute_image = cv2.imread('mute.jpg')  
 
 cap = cv2.VideoCapture(0)
 
 mp_hands = mp.solutions.hands
 mp_drawing = mp.solutions.drawing_utils
-
 hands = mp_hands.Hands(static_image_mode=False, max_num_hands=2, min_detection_confidence=0.3)
 
-labels_dict = {0: 'Hello', 1: 'I Love You', 2: 'No', 3: 'Clear', 4: 'Thank You', 5: 'I', 6: 'Love', 7: 'Phenikaa', 8: "I'm just kidding"}
+labels_dict = {0: 'Hello', 1: 'I Love You', 2: 'No', 3: 'Clear', 4: 'Thank You', 5: 'I', 6: 'Love', 7: 'Phenikaa', 8: "I'm just kidding",9: "a",10: "b",11: "v",12: "u",13:"L"}
 
 text_output = ""
 previous_character_left = ""
@@ -37,8 +41,19 @@ confirmation_counter_right = 0
 required_confirmations = 10  
 
 def speak_text(text):
-    engine.say(text)
-    engine.runAndWait()
+    global is_muted
+    if not is_muted:
+        engine.say(text)
+        engine.runAndWait()
+
+def toggle_mute(event, x, y, flags, param):
+    global is_muted
+    if event == cv2.EVENT_LBUTTONDOWN:
+        if x >= param[0] and x <= param[0] + 50 and y >= param[1] and y <= param[1] + 50:
+            is_muted = not is_muted  # Chuyển đổi trạng thái mute/unmute
+
+cv2.namedWindow('frame')
+cv2.setMouseCallback('frame', toggle_mute, param=(10, 10))  # Vị trí góc trên bên trái
 
 while True:
     ret, frame = cap.read()
@@ -50,6 +65,12 @@ while True:
     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     results = hands.process(frame_rgb)
+
+    # Thêm hình cái loa vào góc trên bên trái
+    if is_muted:
+        frame[10:60, 10:60] = cv2.resize(mute_image, (50, 50))  # Hiển thị hình mute
+    else:
+        frame[10:60, 10:60] = cv2.resize(volume_on_image, (50, 50))  # Hiển thị hình volume on
 
     if results.multi_hand_landmarks:
         if len(results.multi_hand_landmarks) == 1:
@@ -117,7 +138,7 @@ while True:
                     elif label == "Right":
                         if predicted_character == "Clear":
                             threading.Thread(target=speak_text, args=(text_output,)).start()
-                            text_output = ""  # Xóa (clear) văn bản sau khi phát xong
+                            text_output = ""  
                         elif predicted_character != previous_character_right:
                             confirmation_counter_right += 1
                         else:
@@ -201,7 +222,9 @@ while True:
         text_output = ""
     cv2.rectangle(frame, (0, H - 50), (W, H), (255, 255, 255), -1)
     cv2.putText(frame, text_output, (10, H - 15), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 0), 2, cv2.LINE_AA)
+    
     cv2.imshow('frame', frame)
+    
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
